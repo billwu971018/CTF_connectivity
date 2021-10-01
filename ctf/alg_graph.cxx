@@ -572,6 +572,7 @@ void shortcut3(Vector<int> & p, Vector<int> & q, Vector<int> & rec_p, Vector<int
   int64_t num_st_iterations = 0;
 #endif
 
+  std::unordered_map<int64_t, int64_t>::iterator it;
   while (1) {
 
 #ifdef TIME_ITERATION
@@ -584,7 +585,7 @@ void shortcut3(Vector<int> & p, Vector<int> & q, Vector<int> & rec_p, Vector<int
     stimest = MPI_Wtime();
 #endif
 #ifdef _OPENMP
-    bool changed[nthreads]();
+    bool * changed = new bool[nthreads]();
       #pragma omp parallel for
 #else
     bool changed = false;
@@ -593,7 +594,7 @@ void shortcut3(Vector<int> & p, Vector<int> & q, Vector<int> & rec_p, Vector<int
 #ifdef _OPENMP
       for (int j = 0; j < nthreads; j++) {
         it = m_alldata[j].find(pprs[i].d);
-        if (it != m_alldata.end()) {
+        if (it != m_alldata[j].end()) {
           // change the parent (shortcut)
           pprs[i].d = it->second;
           changed[tid] = true;
@@ -601,7 +602,6 @@ void shortcut3(Vector<int> & p, Vector<int> & q, Vector<int> & rec_p, Vector<int
         }
       }
 #else
-      std::unordered_map<int64_t, int64_t>::iterator it;
       it = m_alldata.find(pprs[i].d);
       if (it != m_alldata.end()) {
         // change the parent (shortcut)
@@ -621,7 +621,10 @@ void shortcut3(Vector<int> & p, Vector<int> & q, Vector<int> & rec_p, Vector<int
     for (int j = 0; j < nthreads; j++) {
       c = c || changed[j];
     }
-    if (c == false) break;
+    if (c == false) {
+      free(changed);
+      break;
+    }
 #else
     if (changed == false) break; 
 #endif
