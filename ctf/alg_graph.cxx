@@ -477,6 +477,7 @@ void create_nontriv_loc_pairs(Pair<int> *& nontriv_loc_pairs, int64_t * loc_nont
   *loc_nontriv_num = j;
 }
 
+
 // p[i] = rec_p[q[i]]
 // read_local()
 void shortcut3(Vector<int> & p, Vector<int> & q, Vector<int> & rec_p, Vector<int> & p_prev, MPI_Datatype &mpi_pkv, World * world)
@@ -535,10 +536,22 @@ void shortcut3(Vector<int> & p, Vector<int> & q, Vector<int> & rec_p, Vector<int
   stimeb = MPI_Wtime();
 #endif
   // Build a map of the key value pair
+  int64_t tot_changed_parents = disps[np-1] + counts[np-1];
+#ifdef _OPENMP
+  int nthreads = omp_get_num_threads();
+  std::unordered_map<int64_t, int64_t> m_alldata[nthreads];
+  int tid = omp_get_thread_num();
+#pragma omp parallel for
+  for(int i = 0; i < tot_changed_parents; i++) {
+    m_alldata[tid].insert({alldata[i].key, alldata[i].value});
+  }
+#else
   std::unordered_map<int64_t, int64_t> m_alldata;
-  for(int i = 0; i < (disps[np-1] + counts[np-1]); i++) {
+  for(int i = 0; i < tot_changed_parents; i++) {
     m_alldata.insert({alldata[i].key, alldata[i].value});
   }
+#endif
+
 #ifdef TIME_ITERATION
   MPI_Barrier(MPI_COMM_WORLD);
   etimeb = MPI_Wtime();
@@ -570,11 +583,24 @@ void shortcut3(Vector<int> & p, Vector<int> & q, Vector<int> & rec_p, Vector<int
     double etimest;
     stimest = MPI_Wtime();
 #endif
-    bool changed = false;
 #ifdef _OPENMP
-      #pragma omp parallel for shared(changed)
+    bool changed[nthreads]();
+      #pragma omp parallel for
+#else
+    bool changed = false;
 #endif
     for (int64_t i = 0; i < npprs; i++) {
+#ifdef _OPENMP
+      for (int j = 0; j < nthreads; j++) {
+        it = m_alldata[j].find(pprs[i].d);
+        if (it != m_alldata.end()) {
+          // change the parent (shortcut)
+          pprs[i].d = it->second;
+          changed[tid] = true;
+          break;
+        }
+      }
+#else
       std::unordered_map<int64_t, int64_t>::iterator it;
       it = m_alldata.find(pprs[i].d);
       if (it != m_alldata.end()) {
@@ -582,6 +608,7 @@ void shortcut3(Vector<int> & p, Vector<int> & q, Vector<int> & rec_p, Vector<int
         pprs[i].d = it->second;
         changed = true;
       }
+#endif
     }
 #ifdef TIME_ST_ITERATION
     etimest = MPI_Wtime();
@@ -589,7 +616,15 @@ void shortcut3(Vector<int> & p, Vector<int> & q, Vector<int> & rec_p, Vector<int
       printf("\n ------ shortcut3: st iteration in %1.2lf  ", (etimest - stimest));
     }
 #endif
+#ifdef _OPENMP
+    bool c = false;
+    for (int j = 0; j < nthreads; j++) {
+      c = c || changed[j];
+    }
+    if (c == false) break;
+#else
     if (changed == false) break; 
+#endif
   }
 
 #ifdef TIME_ITERATION
@@ -621,6 +656,9 @@ void shortcut3(Vector<int> & p, Vector<int> & q, Vector<int> & rec_p, Vector<int
   //t_shortcut.stop();
   TAU_FSTOP(Local_shortcut3);
 }
+
+
+
 
 // return B where B[i,j] = A[p[i],p[j]], or if P is P[i,j] = p[i], compute B = P^T A P
 template<typename T>
