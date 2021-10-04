@@ -538,12 +538,18 @@ void shortcut3(Vector<int> & p, Vector<int> & q, Vector<int> & rec_p, Vector<int
   // Build a map of the key value pair
   int64_t tot_changed_parents = disps[np-1] + counts[np-1];
 #ifdef _OPENMP
-  int nthreads = omp_get_num_threads();
+  int nthreads;
+  #pragma omp parallel
+  {
+    nthreads = omp_get_num_threads();
+  }
   std::unordered_map<int64_t, int64_t> m_alldata[nthreads];
-  int tid = omp_get_thread_num();
-#pragma omp parallel for
-  for(int i = 0; i < tot_changed_parents; i++) {
-    m_alldata[tid].insert({alldata[i].key, alldata[i].value});
+#pragma omp parallel
+  {
+    int tid = omp_get_thread_num();
+    for(int64_t i = tid; i < tot_changed_parents; i += nthreads) {
+      m_alldata[tid].insert({alldata[i].key, alldata[i].value});
+    }
   }
 #else
   std::unordered_map<int64_t, int64_t> m_alldata;
@@ -586,7 +592,7 @@ void shortcut3(Vector<int> & p, Vector<int> & q, Vector<int> & rec_p, Vector<int
 #endif
 #ifdef _OPENMP
     bool * changed = new bool[nthreads]();
-      #pragma omp parallel for
+    #pragma omp parallel for
 #else
     bool changed = false;
 #endif
@@ -597,8 +603,8 @@ void shortcut3(Vector<int> & p, Vector<int> & q, Vector<int> & rec_p, Vector<int
         if (it != m_alldata[j].end()) {
           // change the parent (shortcut)
           pprs[i].d = it->second;
-          changed[tid] = true;
-          break;
+          changed[j] = true;
+          //break;
         }
       }
 #else
@@ -625,6 +631,7 @@ void shortcut3(Vector<int> & p, Vector<int> & q, Vector<int> & rec_p, Vector<int
       free(changed);
       break;
     }
+    free(changed);
 #else
     if (changed == false) break; 
 #endif
